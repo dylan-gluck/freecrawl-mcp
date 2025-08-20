@@ -10,38 +10,54 @@ A production-ready Model Context Protocol (MCP) server for web scraping and docu
 - **Intelligent caching** with SQLite backend
 - **Rate limiting** per domain
 - **Comprehensive error handling** with retry logic
-- **Single-file deployment** with uv script format
+- **Easy installation** via `uvx` or local development setup
 - **Health monitoring** and metrics collection
 
-## 📦 Installation & Setup
+## 📦 Installation & Usage
 
-### Prerequisites
+### Quick Start with uvx (Recommended)
 
-- Python 3.12+
-- uv package manager
+The easiest way to use FreeCrawl is with `uvx`, which automatically manages dependencies:
 
-### Quick Start
+```bash
+# Install and run directly
+uvx freecrawl-mcp
 
-1. **Install and test FreeCrawl:**
+# Install browsers on first run
+uvx freecrawl-mcp --install-browsers
+
+# Test functionality
+uvx freecrawl-mcp --test
+
+# Get help
+uvx freecrawl-mcp --help
+```
+
+### Local Development Setup
+
+For local development or customization:
+
+1. **Clone from GitHub:**
    ```bash
-   # Test installation
-   uv run /path/to/freecrawl.py --help
+   git clone https://github.com/dylan-gluck/freecrawl-mcp.git
+   cd freecrawl-mcp
+   ```
+
+2. **Set up environment:**
+   ```bash
+   # Sync dependencies
+   uv sync
 
    # Install browser dependencies
-   uv run /path/to/freecrawl.py --install-browsers
+   uv run freecrawl --install-browsers
 
-   # Run basic functionality test
-   uv run /path/to/freecrawl.py --test
+   # Run tests
+   uv run freecrawl --test
    ```
 
-2. **Run as MCP server (default STDIO mode):**
+3. **Run the server:**
    ```bash
-   uv run /path/to/freecrawl.py
-   ```
-
-3. **Test with example script:**
-   ```bash
-   uv run mcp/example_usage.py
+   uv run freecrawl
    ```
 
 ## 🛠 Configuration
@@ -210,15 +226,28 @@ Get server health status and metrics.
 
 ### MCP Configuration
 
-Add FreeCrawl to your `.claude/agent-tools.json`:
+Add FreeCrawl to your MCP configuration:
 
+**Using uvx (Recommended):**
 ```json
 {
-  "mcp": {
+  "mcpServers": {
+    "freecrawl": {
+      "command": "uvx",
+      "args": ["freecrawl-mcp"]
+    }
+  }
+}
+```
+
+**Using local development setup:**
+```json
+{
+  "mcpServers": {
     "freecrawl": {
       "command": "uv",
-      "args": ["run", "/path/to/freecrawl.py"],
-      "cwd": "/path/to/your/project"
+      "args": ["run", "freecrawl"],
+      "cwd": "/path/to/freecrawl-mcp"
     }
   }
 }
@@ -280,21 +309,20 @@ Claude Code will automatically use the `freecrawl_scrape` tool to fetch and proc
 | Slow responses | JavaScript-heavy sites | Increase timeout or disable JS |
 | Bot detection | Missing anti-detection | Ensure `FREECRAWL_ANTI_DETECT=true` |
 | Cache misses | TTL too short | Increase `FREECRAWL_CACHE_TTL` |
-| Import errors | Missing dependencies | Run `uv run /path/to/freecrawl.py --test` |
+| Import errors | Missing dependencies | Run `uvx freecrawl-mcp --test` |
 
 ### Debug Mode
+
+**With uvx:**
 ```bash
 export FREECRAWL_LOG_LEVEL=DEBUG
-uv run /path/to/freecrawl.py --test
+uvx freecrawl-mcp --test
 ```
 
-### Health Check
+**Local development:**
 ```bash
-# Check server status
-curl localhost:8000/health  # If running in HTTP mode
-
-# Or use the health check tool
-echo '{"name": "freecrawl_health_check", "arguments": {}}' | uv run /path/to/freecrawl.py
+export FREECRAWL_LOG_LEVEL=DEBUG
+uv run freecrawl --test
 ```
 
 ## 📈 Monitoring & Observability
@@ -316,12 +344,17 @@ FreeCrawl provides structured logging with configurable levels:
 ## 🔧 Development
 
 ### Running Tests
+
+**With uvx:**
 ```bash
 # Basic functionality test
-uv run /path/to/freecrawl.py --test
+uvx freecrawl-mcp --test
+```
 
-# Comprehensive example
-uv run mcp/example_usage.py
+**Local development:**
+```bash
+# Basic functionality test
+uv run freecrawl --test
 ```
 
 ### Code Structure
@@ -337,10 +370,11 @@ This project is licensed under the MIT License - see the technical specification
 
 ## 🤝 Contributing
 
-1. Fork the repository
+1. Fork the repository at https://github.com/dylan-gluck/freecrawl-mcp
 2. Create a feature branch
-3. Run tests: `uv run /path/to/freecrawl.py --test`
-4. Submit a pull request
+3. Set up local development: `uv sync`
+4. Run tests: `uv run freecrawl --test`
+5. Submit a pull request
 
 ## 📚 Technical Specification
 

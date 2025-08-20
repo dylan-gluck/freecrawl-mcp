@@ -1,27 +1,8 @@
-#!/usr/bin/env -S uv run
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#     "mcp>=1.0.0",
-#     "playwright>=1.40.0",
-#     "aiohttp>=3.9.0",
-#     "beautifulsoup4>=4.12.0",
-#     "markdownify>=0.11.0",
-#     "pydantic>=2.0.0",
-#     "tenacity>=8.0.0",
-#     "psutil>=5.9.0",
-#     "aiosqlite>=0.19.0",
-# ]
-# ///
-
 """
 FreeCrawl MCP Server - Self-hosted web scraping and document processing
 
 A production-ready MCP server that provides web scraping, document processing,
 and structured data extraction capabilities as a Firecrawl replacement.
-
-Usage:
-    uv run /path/to/freecrawl.py
 
 Features:
 - JavaScript-enabled web scraping with anti-detection
@@ -67,7 +48,12 @@ from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from pydantic import BaseModel, Field, HttpUrl, validator
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 # MCP imports
 try:
@@ -75,6 +61,7 @@ try:
     from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
     import mcp.server.stdio
     import mcp.server.session
+
     HAS_MCP = True
 except ImportError:
     HAS_MCP = False
@@ -83,18 +70,19 @@ except ImportError:
 # Optional imports
 try:
     import magic
+
     HAS_MAGIC = True
 except ImportError:
     HAS_MAGIC = False
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 # === Configuration ===
+
 
 @dataclass
 class ServerConfig:
@@ -120,51 +108,78 @@ class ServerConfig:
     cache_max_size: int = int(os.getenv("FREECRAWL_CACHE_SIZE", "536870912"))  # 512MB
 
     # Security
-    require_api_key: bool = os.getenv("FREECRAWL_REQUIRE_API_KEY", "false").lower() == "true"
-    api_keys: List[str] = field(default_factory=lambda: os.getenv("FREECRAWL_API_KEYS", "").split(",") if os.getenv("FREECRAWL_API_KEYS") else [])
-    blocked_domains: List[str] = field(default_factory=lambda: os.getenv("FREECRAWL_BLOCKED_DOMAINS", "").split(",") if os.getenv("FREECRAWL_BLOCKED_DOMAINS") else [])
+    require_api_key: bool = (
+        os.getenv("FREECRAWL_REQUIRE_API_KEY", "false").lower() == "true"
+    )
+    api_keys: List[str] = field(
+        default_factory=lambda: os.getenv("FREECRAWL_API_KEYS", "").split(",")
+        if os.getenv("FREECRAWL_API_KEYS")
+        else []
+    )
+    blocked_domains: List[str] = field(
+        default_factory=lambda: os.getenv("FREECRAWL_BLOCKED_DOMAINS", "").split(",")
+        if os.getenv("FREECRAWL_BLOCKED_DOMAINS")
+        else []
+    )
 
     # Anti-detection
     anti_detect: bool = os.getenv("FREECRAWL_ANTI_DETECT", "true").lower() == "true"
-    user_agent_rotation: bool = os.getenv("FREECRAWL_ROTATE_UA", "true").lower() == "true"
-    proxy_list: List[str] = field(default_factory=lambda: os.getenv("FREECRAWL_PROXIES", "").split(",") if os.getenv("FREECRAWL_PROXIES") else [])
+    user_agent_rotation: bool = (
+        os.getenv("FREECRAWL_ROTATE_UA", "true").lower() == "true"
+    )
+    proxy_list: List[str] = field(
+        default_factory=lambda: os.getenv("FREECRAWL_PROXIES", "").split(",")
+        if os.getenv("FREECRAWL_PROXIES")
+        else []
+    )
 
     # Performance
     rate_limit_default: int = int(os.getenv("FREECRAWL_RATE_LIMIT", "60"))
     request_timeout: int = int(os.getenv("FREECRAWL_REQUEST_TIMEOUT", "30"))
-    max_response_size: int = int(os.getenv("FREECRAWL_MAX_RESPONSE", "52428800"))  # 50MB
+    max_response_size: int = int(
+        os.getenv("FREECRAWL_MAX_RESPONSE", "52428800")
+    )  # 50MB
 
     # Monitoring
     metrics_enabled: bool = os.getenv("FREECRAWL_METRICS", "true").lower() == "true"
     log_level: str = os.getenv("FREECRAWL_LOG_LEVEL", "INFO")
     audit_log: bool = os.getenv("FREECRAWL_AUDIT_LOG", "false").lower() == "true"
 
+
 # === Data Models ===
+
 
 class BoundingBox(BaseModel):
     """Coordinate system for document elements"""
+
     x: float
     y: float
     width: float
     height: float
 
+
 class DocumentMetadata(BaseModel):
     """Metadata for processed documents"""
+
     page_number: Optional[int] = None
     coordinates: Optional[BoundingBox] = None
     confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
     element_id: Optional[str] = None
     parent_id: Optional[str] = None
 
+
 class DocumentElement(BaseModel):
     """Structured element from document processing"""
+
     type: Literal["Title", "Text", "List", "Table", "Image", "Code", "Header", "Footer"]
     content: str
     metadata: DocumentMetadata
-    children: Optional[List['DocumentElement']] = None
+    children: Optional[List["DocumentElement"]] = None
+
 
 class PageMetadata(BaseModel):
     """Web page metadata"""
+
     timestamp: datetime
     status_code: int
     content_type: str
@@ -175,8 +190,10 @@ class PageMetadata(BaseModel):
     headers: Dict[str, str] = {}
     cookies: Optional[Dict[str, str]] = None
 
+
 class ScrapedContent(BaseModel):
     """Primary response format for scraped content"""
+
     url: str
     title: Optional[str] = None
     markdown: Optional[str] = None
@@ -188,8 +205,10 @@ class ScrapedContent(BaseModel):
     links: Optional[List[str]] = None
     images: Optional[List[str]] = None
 
+
 class ExtractedData(BaseModel):
     """Schema-driven extracted data"""
+
     url: str
     schema_version: str
     extracted_at: datetime
@@ -197,8 +216,10 @@ class ExtractedData(BaseModel):
     confidence_scores: Optional[Dict[str, float]] = None
     validation_errors: Optional[List[str]] = None
 
+
 class CrawlResult(BaseModel):
     """Result from website crawling"""
+
     start_url: str
     pages_found: int
     pages_scraped: int
@@ -207,15 +228,19 @@ class CrawlResult(BaseModel):
     sitemap: Optional[Dict[str, List[str]]] = None
     errors: Optional[List[Dict[str, str]]] = None
 
+
 class SearchResult(BaseModel):
     """Web search result"""
+
     query: str
     total_results: int
     results: List[Dict[str, Any]]
     scraped_content: Optional[List[ScrapedContent]] = None
 
+
 class ErrorCode(Enum):
     """Error codes for standardized error handling"""
+
     INVALID_URL = "invalid_url"
     INVALID_SCHEMA = "invalid_schema"
     RATE_LIMITED = "rate_limited"
@@ -231,17 +256,22 @@ class ErrorCode(Enum):
     CAPTCHA_REQUIRED = "captcha_required"
     IP_BLOCKED = "ip_blocked"
 
+
 class FreeCrawlError(Exception):
     """Base exception for FreeCrawl errors"""
 
-    def __init__(self, code: ErrorCode, message: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, code: ErrorCode, message: str, details: Optional[Dict[str, Any]] = None
+    ):
         self.code = code
         self.message = message
         self.details = details or {}
         self.timestamp = datetime.now()
         super().__init__(message)
 
+
 # === Browser Pool Management ===
+
 
 class BrowserPool:
     """Manage browser instances with resource limits"""
@@ -268,15 +298,15 @@ class BrowserPool:
         browser = await self._playwright.chromium.launch(
             headless=True,
             args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-extensions',
-                '--disable-plugins',
-                '--disable-images',  # Faster loading
-                '--disable-javascript',  # Will enable selectively
-                '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-extensions",
+                "--disable-plugins",
+                "--disable-images",  # Faster loading
+                "--disable-javascript",  # Will enable selectively
+                "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            ],
         )
         self.browsers.append(browser)
         return browser
@@ -284,7 +314,10 @@ class BrowserPool:
     async def get_browser(self) -> Browser:
         """Get an available browser instance"""
         async with self._lock:
-            if self.available_browsers.empty() and len(self.browsers) < self.max_browsers:
+            if (
+                self.available_browsers.empty()
+                and len(self.browsers) < self.max_browsers
+            ):
                 browser = await self._create_browser()
                 return browser
 
@@ -305,7 +338,9 @@ class BrowserPool:
         if self._playwright:
             await self._playwright.stop()
 
+
 # === Anti-Detection Service ===
+
 
 class AntiDetectionService:
     """Comprehensive anti-bot detection evasion"""
@@ -318,7 +353,9 @@ class AntiDetectionService:
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
         ]
 
-    async def prepare_context(self, context: BrowserContext, enable_js: bool = True) -> None:
+    async def prepare_context(
+        self, context: BrowserContext, enable_js: bool = True
+    ) -> None:
         """Configure browser context for stealth operation"""
 
         # Randomize user agent
@@ -372,22 +409,26 @@ class AntiDetectionService:
         """)
 
         # Set realistic headers
-        await context.set_extra_http_headers({
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'User-Agent': ua,
-            'Cache-Control': 'max-age=0',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-        })
+        await context.set_extra_http_headers(
+            {
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "User-Agent": ua,
+                "Cache-Control": "max-age=0",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+            }
+        )
 
         # Set viewport - this should be done when creating a page, not on context
         # We'll set this when creating pages
 
+
 # === Cache Manager ===
+
 
 class CacheManager:
     """Intelligent caching with TTL and size limits"""
@@ -415,8 +456,12 @@ class CacheManager:
                     size_bytes INTEGER NOT NULL
                 )
             """)
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_cache_expires ON cache_entries(expires_at)")
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_cache_url ON cache_entries(url)")
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cache_expires ON cache_entries(expires_at)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cache_url ON cache_entries(url)"
+            )
             await db.commit()
 
         # Calculate current size
@@ -429,20 +474,23 @@ class CacheManager:
             row = await cursor.fetchone()
             self.current_size = row[0] if row and row[0] else 0
 
-    async def get(self, url: str, cache_key: Optional[str] = None) -> Optional[ScrapedContent]:
+    async def get(
+        self, url: str, cache_key: Optional[str] = None
+    ) -> Optional[ScrapedContent]:
         """Retrieve cached content if valid"""
         key = cache_key or self._generate_key(url)
 
         async with aiosqlite.connect(str(self.db_path)) as db:
             cursor = await db.execute(
-                "SELECT data, expires_at FROM cache_entries WHERE cache_key = ?",
-                (key,)
+                "SELECT data, expires_at FROM cache_entries WHERE cache_key = ?", (key,)
             )
             row = await cursor.fetchone()
 
             if row:
                 data, expires_at = row
-                expires_datetime = datetime.fromisoformat(expires_at) if expires_at else None
+                expires_datetime = (
+                    datetime.fromisoformat(expires_at) if expires_at else None
+                )
 
                 if expires_datetime and expires_datetime < datetime.now():
                     # Expired
@@ -452,7 +500,7 @@ class CacheManager:
                 # Update hit count
                 await db.execute(
                     "UPDATE cache_entries SET hit_count = hit_count + 1 WHERE cache_key = ?",
-                    (key,)
+                    (key,),
                 )
                 await db.commit()
 
@@ -467,7 +515,9 @@ class CacheManager:
 
         return None
 
-    async def set(self, url: str, content: ScrapedContent, ttl: Optional[int] = None) -> str:
+    async def set(
+        self, url: str, content: ScrapedContent, ttl: Optional[int] = None
+    ) -> str:
         """Cache scraped content"""
         key = self._generate_key(url)
 
@@ -493,7 +543,7 @@ class CacheManager:
                 (cache_key, url, content_type, data, expires_at, size_bytes)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (key, url, "scraped_content", data, expires_at.isoformat(), size)
+                (key, url, "scraped_content", data, expires_at.isoformat(), size),
             )
             await db.commit()
 
@@ -504,14 +554,15 @@ class CacheManager:
         """Delete cache entry"""
         async with aiosqlite.connect(str(self.db_path)) as db:
             cursor = await db.execute(
-                "SELECT size_bytes FROM cache_entries WHERE cache_key = ?",
-                (cache_key,)
+                "SELECT size_bytes FROM cache_entries WHERE cache_key = ?", (cache_key,)
             )
             row = await cursor.fetchone()
 
             if row:
                 size = row[0]
-                await db.execute("DELETE FROM cache_entries WHERE cache_key = ?", (cache_key,))
+                await db.execute(
+                    "DELETE FROM cache_entries WHERE cache_key = ?", (cache_key,)
+                )
                 await db.commit()
                 self.current_size -= size
 
@@ -538,11 +589,16 @@ class CacheManager:
     async def cleanup(self):
         """Cleanup expired entries"""
         async with aiosqlite.connect(str(self.db_path)) as db:
-            await db.execute("DELETE FROM cache_entries WHERE expires_at < ?", (datetime.now().isoformat(),))
+            await db.execute(
+                "DELETE FROM cache_entries WHERE expires_at < ?",
+                (datetime.now().isoformat(),),
+            )
             await db.commit()
         await self._calculate_size()
 
+
 # === Content Extractor ===
+
 
 class ContentExtractor:
     """Multi-strategy content extraction with fallback"""
@@ -559,7 +615,7 @@ class ContentExtractor:
         wait_for: Optional[str] = None,
         headers: Optional[Dict[str, str]] = None,
         cookies: Optional[Dict[str, str]] = None,
-        timeout: int = 30000
+        timeout: int = 30000,
     ) -> ScrapedContent:
         """Extract content from URL using browser"""
 
@@ -584,25 +640,31 @@ class ContentExtractor:
                 domain = parsed_url.netloc
 
                 for name, value in cookies.items():
-                    cookie_list.append({
-                        'name': name,
-                        'value': value,
-                        'domain': domain,
-                        'path': '/',
-                    })
+                    cookie_list.append(
+                        {
+                            "name": name,
+                            "value": value,
+                            "domain": domain,
+                            "path": "/",
+                        }
+                    )
                 await context.add_cookies(cookie_list)
 
             # Create page
             page = await context.new_page()
 
             # Set viewport size
-            await page.set_viewport_size({
-                "width": random.choice([1920, 1366, 1440, 1536]),
-                "height": random.choice([1080, 768, 900, 864])
-            })
+            await page.set_viewport_size(
+                {
+                    "width": random.choice([1920, 1366, 1440, 1536]),
+                    "height": random.choice([1080, 768, 900, 864]),
+                }
+            )
 
             # Navigate to URL
-            response = await page.goto(url, timeout=timeout, wait_until='domcontentloaded')
+            response = await page.goto(
+                url, timeout=timeout, wait_until="domcontentloaded"
+            )
 
             if not response:
                 raise FreeCrawlError(ErrorCode.NETWORK_ERROR, f"Failed to load {url}")
@@ -622,10 +684,10 @@ class ContentExtractor:
             title = await page.title()
 
             # Parse with BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = BeautifulSoup(html, "html.parser")
 
             # Extract text content
-            text_content = soup.get_text(separator=' ', strip=True)
+            text_content = soup.get_text(separator=" ", strip=True)
 
             # Generate markdown
             markdown_content = None
@@ -643,15 +705,15 @@ class ContentExtractor:
 
             # Extract links
             links = []
-            for link in soup.find_all('a', href=True):
-                href = link['href']
+            for link in soup.find_all("a", href=True):
+                href = link["href"]
                 absolute_url = urljoin(url, href)
                 links.append(absolute_url)
 
             # Extract images
             images = []
-            for img in soup.find_all('img', src=True):
-                src = img['src']
+            for img in soup.find_all("img", src=True):
+                src = img["src"]
                 absolute_url = urljoin(url, src)
                 images.append(absolute_url)
 
@@ -660,7 +722,7 @@ class ContentExtractor:
             metadata = PageMetadata(
                 timestamp=datetime.now(),
                 status_code=response.status,
-                content_type=response.headers.get('content-type', 'text/html'),
+                content_type=response.headers.get("content-type", "text/html"),
                 page_load_time=load_time,
                 word_count=len(text_content.split()),
                 headers=dict(response.headers),
@@ -681,13 +743,15 @@ class ContentExtractor:
                 metadata=metadata,
                 elements=elements,
                 links=links[:50],  # Limit to first 50 links
-                images=images[:50]  # Limit to first 50 images
+                images=images[:50],  # Limit to first 50 images
             )
 
         except Exception as e:
             if isinstance(e, FreeCrawlError):
                 raise
-            raise FreeCrawlError(ErrorCode.PROCESSING_ERROR, f"Failed to extract content: {str(e)}")
+            raise FreeCrawlError(
+                ErrorCode.PROCESSING_ERROR, f"Failed to extract content: {str(e)}"
+            )
 
         finally:
             if page:
@@ -699,7 +763,7 @@ class ContentExtractor:
         """Convert HTML to markdown"""
         try:
             # Clean up HTML first
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = BeautifulSoup(html, "html.parser")
 
             # Remove script and style elements
             for script in soup(["script", "style", "nav", "footer", "aside"]):
@@ -709,52 +773,62 @@ class ContentExtractor:
             markdown = md(str(soup), heading_style="ATX", bullets="-")
 
             # Clean up markdown
-            lines = markdown.split('\n')
+            lines = markdown.split("\n")
             clean_lines = []
 
             for line in lines:
                 line = line.strip()
-                if line and not line.startswith('[]'):  # Remove empty link references
+                if line and not line.startswith("[]"):  # Remove empty link references
                     clean_lines.append(line)
 
-            return '\n\n'.join(clean_lines)
+            return "\n\n".join(clean_lines)
 
         except Exception as e:
             logger.warning(f"Markdown conversion failed: {e}")
             return html
 
-    def _extract_structured_elements(self, soup: BeautifulSoup) -> List[DocumentElement]:
+    def _extract_structured_elements(
+        self, soup: BeautifulSoup
+    ) -> List[DocumentElement]:
         """Extract structured document elements"""
         elements = []
 
         try:
             # Extract headings
-            for i, heading in enumerate(soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])):
-                elements.append(DocumentElement(
-                    type="Header",
-                    content=heading.get_text(strip=True),
-                    metadata=DocumentMetadata(element_id=f"heading_{i}")
-                ))
+            for i, heading in enumerate(
+                soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+            ):
+                elements.append(
+                    DocumentElement(
+                        type="Header",
+                        content=heading.get_text(strip=True),
+                        metadata=DocumentMetadata(element_id=f"heading_{i}"),
+                    )
+                )
 
             # Extract paragraphs
-            for i, p in enumerate(soup.find_all('p')):
+            for i, p in enumerate(soup.find_all("p")):
                 text = p.get_text(strip=True)
                 if text:
-                    elements.append(DocumentElement(
-                        type="Text",
-                        content=text,
-                        metadata=DocumentMetadata(element_id=f"paragraph_{i}")
-                    ))
+                    elements.append(
+                        DocumentElement(
+                            type="Text",
+                            content=text,
+                            metadata=DocumentMetadata(element_id=f"paragraph_{i}"),
+                        )
+                    )
 
             # Extract lists
-            for i, ul in enumerate(soup.find_all(['ul', 'ol'])):
-                items = [li.get_text(strip=True) for li in ul.find_all('li')]
+            for i, ul in enumerate(soup.find_all(["ul", "ol"])):
+                items = [li.get_text(strip=True) for li in ul.find_all("li")]
                 if items:
-                    elements.append(DocumentElement(
-                        type="List",
-                        content='\n'.join(f"- {item}" for item in items),
-                        metadata=DocumentMetadata(element_id=f"list_{i}")
-                    ))
+                    elements.append(
+                        DocumentElement(
+                            type="List",
+                            content="\n".join(f"- {item}" for item in items),
+                            metadata=DocumentMetadata(element_id=f"list_{i}"),
+                        )
+                    )
 
             return elements[:100]  # Limit to first 100 elements
 
@@ -762,7 +836,9 @@ class ContentExtractor:
             logger.warning(f"Structured extraction failed: {e}")
             return []
 
+
 # === Rate Limiter ===
+
 
 class RateLimiter:
     """Token bucket rate limiter with per-domain tracking"""
@@ -781,7 +857,7 @@ class RateLimiter:
         if domain not in self.domain_buckets:
             self.domain_buckets[domain] = {
                 "tokens": self.default_limit,
-                "last_refill": now
+                "last_refill": now,
             }
 
         bucket = self.domain_buckets[domain]
@@ -799,7 +875,9 @@ class RateLimiter:
 
         return False
 
+
 # === Document Processor ===
+
 
 class DocumentProcessor:
     """Process documents using Unstructured"""
@@ -812,7 +890,7 @@ class DocumentProcessor:
         formats: List[str] = ["structured"],
         languages: Optional[List[str]] = None,
         extract_images: bool = False,
-        extract_tables: bool = True
+        extract_tables: bool = True,
     ) -> Dict[str, Any]:
         """Process document file or URL"""
 
@@ -855,13 +933,19 @@ class DocumentProcessor:
                     # Map Unstructured types to our types
                     mapped_type = self._map_element_type(element_type)
 
-                    structured_elements.append(DocumentElement(
-                        type=mapped_type,
-                        content=content,
-                        metadata=DocumentMetadata(
-                            page_number=getattr(element.metadata, 'page_number', None) if hasattr(element, 'metadata') else None
+                    structured_elements.append(
+                        DocumentElement(
+                            type=mapped_type,
+                            content=content,
+                            metadata=DocumentMetadata(
+                                page_number=getattr(
+                                    element.metadata, "page_number", None
+                                )
+                                if hasattr(element, "metadata")
+                                else None
+                            ),
                         )
-                    ))
+                    )
 
                     # Build markdown
                     if mapped_type == "Header":
@@ -876,36 +960,40 @@ class DocumentProcessor:
             result = {
                 "file_path": file_path,
                 "elements_count": len(structured_elements),
-                "word_count": len(' '.join(text_content).split()),
+                "word_count": len(" ".join(text_content).split()),
             }
 
             if "structured" in formats:
                 result["elements"] = [elem.model_dump() for elem in structured_elements]
 
             if "markdown" in formats:
-                result["markdown"] = '\n\n'.join(markdown_content)
+                result["markdown"] = "\n\n".join(markdown_content)
 
             if "text" in formats:
-                result["text"] = '\n\n'.join(text_content)
+                result["text"] = "\n\n".join(text_content)
 
             return result
 
         except Exception as e:
             if isinstance(e, FreeCrawlError):
                 raise
-            raise FreeCrawlError(ErrorCode.PROCESSING_ERROR, f"Document processing failed: {str(e)}")
+            raise FreeCrawlError(
+                ErrorCode.PROCESSING_ERROR, f"Document processing failed: {str(e)}"
+            )
 
         finally:
             if temp_file and os.path.exists(temp_file):
                 os.unlink(temp_file)
 
-    async def _basic_document_processing(self, file_path: str, formats: List[str]) -> Dict[str, Any]:
+    async def _basic_document_processing(
+        self, file_path: str, formats: List[str]
+    ) -> Dict[str, Any]:
         """Basic document processing fallback when Unstructured is not available"""
         try:
             # Simple text extraction for common formats
             content = ""
-            if file_path.lower().endswith('.txt'):
-                with open(file_path, 'r', encoding='utf-8') as f:
+            if file_path.lower().endswith(".txt"):
+                with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
             else:
                 # For other formats, return file info
@@ -924,23 +1012,31 @@ class DocumentProcessor:
                 result["markdown"] = f"# {os.path.basename(file_path)}\n\n{content}"
 
             if "structured" in formats:
-                result["elements"] = [{
-                    "type": "Text",
-                    "content": content,
-                    "metadata": {"element_id": "document_0"}
-                }]
+                result["elements"] = [
+                    {
+                        "type": "Text",
+                        "content": content,
+                        "metadata": {"element_id": "document_0"},
+                    }
+                ]
 
             return result
 
         except Exception as e:
-            raise FreeCrawlError(ErrorCode.PROCESSING_ERROR, f"Basic document processing failed: {str(e)}")
+            raise FreeCrawlError(
+                ErrorCode.PROCESSING_ERROR,
+                f"Basic document processing failed: {str(e)}",
+            )
 
     async def _download_file(self, url: str) -> str:
         """Download file from URL to temporary location"""
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status != 200:
-                    raise FreeCrawlError(ErrorCode.NETWORK_ERROR, f"Failed to download file: {response.status}")
+                    raise FreeCrawlError(
+                        ErrorCode.NETWORK_ERROR,
+                        f"Failed to download file: {response.status}",
+                    )
 
                 # Create temporary file
                 with tempfile.NamedTemporaryFile(delete=False) as temp_file:
@@ -963,7 +1059,9 @@ class DocumentProcessor:
         }
         return mapping.get(unstructured_type, "Text")
 
+
 # === State Manager ===
+
 
 class StateManager:
     """Centralized state management for the server"""
@@ -989,7 +1087,7 @@ class StateManager:
             self.cache = CacheManager(
                 cache_dir=config.cache_dir,
                 max_size=config.cache_max_size,
-                ttl=config.cache_ttl
+                ttl=config.cache_ttl,
             )
             await self.cache.initialize()
 
@@ -1006,7 +1104,9 @@ class StateManager:
         if self.cache:
             await self.cache.cleanup()
 
+
 # === Main Server ===
+
 
 class FreeCrawlServer:
     """Main FreeCrawl MCP server implementation"""
@@ -1020,7 +1120,7 @@ class FreeCrawlServer:
         """Setup MCP server with tools"""
         if not HAS_MCP:
             raise ImportError("MCP library not found. Install with: pip install mcp")
-        
+
         server = Server("freecrawl")
 
         @server.list_tools()
@@ -1036,20 +1136,54 @@ class FreeCrawlServer:
                             "url": {"type": "string", "description": "URL to scrape"},
                             "formats": {
                                 "type": "array",
-                                "items": {"type": "string", "enum": ["markdown", "html", "text", "screenshot", "structured"]},
+                                "items": {
+                                    "type": "string",
+                                    "enum": [
+                                        "markdown",
+                                        "html",
+                                        "text",
+                                        "screenshot",
+                                        "structured",
+                                    ],
+                                },
                                 "default": ["markdown"],
-                                "description": "Content formats to extract"
+                                "description": "Content formats to extract",
                             },
-                            "javascript": {"type": "boolean", "default": True, "description": "Enable JavaScript rendering"},
-                            "wait_for": {"type": "string", "description": "CSS selector or milliseconds to wait for"},
-                            "anti_bot": {"type": "boolean", "default": True, "description": "Enable anti-bot detection"},
-                            "headers": {"type": "object", "description": "Custom HTTP headers"},
-                            "cookies": {"type": "object", "description": "Custom cookies"},
-                            "cache": {"type": "boolean", "default": True, "description": "Use caching"},
-                            "timeout": {"type": "integer", "default": 30000, "description": "Request timeout in milliseconds"}
+                            "javascript": {
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Enable JavaScript rendering",
+                            },
+                            "wait_for": {
+                                "type": "string",
+                                "description": "CSS selector or milliseconds to wait for",
+                            },
+                            "anti_bot": {
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Enable anti-bot detection",
+                            },
+                            "headers": {
+                                "type": "object",
+                                "description": "Custom HTTP headers",
+                            },
+                            "cookies": {
+                                "type": "object",
+                                "description": "Custom cookies",
+                            },
+                            "cache": {
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Use caching",
+                            },
+                            "timeout": {
+                                "type": "integer",
+                                "default": 30000,
+                                "description": "Request timeout in milliseconds",
+                            },
                         },
-                        "required": ["url"]
-                    }
+                        "required": ["url"],
+                    },
                 ),
                 Tool(
                     name="mcp__freecrawl__search",
@@ -1058,12 +1192,24 @@ class FreeCrawlServer:
                         "type": "object",
                         "properties": {
                             "query": {"type": "string", "description": "Search query"},
-                            "num_results": {"type": "integer", "default": 10, "description": "Number of results to return"},
-                            "scrape_results": {"type": "boolean", "default": True, "description": "Scrape content from result URLs"},
-                            "search_engine": {"type": "string", "default": "duckduckgo", "description": "Search engine to use"}
+                            "num_results": {
+                                "type": "integer",
+                                "default": 10,
+                                "description": "Number of results to return",
+                            },
+                            "scrape_results": {
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Scrape content from result URLs",
+                            },
+                            "search_engine": {
+                                "type": "string",
+                                "default": "duckduckgo",
+                                "description": "Search engine to use",
+                            },
                         },
-                        "required": ["query"]
-                    }
+                        "required": ["query"],
+                    },
                 ),
                 Tool(
                     name="mcp__freecrawl__crawl",
@@ -1071,15 +1217,38 @@ class FreeCrawlServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "start_url": {"type": "string", "description": "Starting URL for crawl"},
-                            "max_pages": {"type": "integer", "default": 10, "description": "Maximum pages to crawl"},
-                            "max_depth": {"type": "integer", "default": 2, "description": "Maximum crawl depth"},
-                            "same_domain_only": {"type": "boolean", "default": True, "description": "Stay within same domain"},
-                            "include_patterns": {"type": "array", "items": {"type": "string"}, "description": "URL patterns to include"},
-                            "exclude_patterns": {"type": "array", "items": {"type": "string"}, "description": "URL patterns to exclude"}
+                            "start_url": {
+                                "type": "string",
+                                "description": "Starting URL for crawl",
+                            },
+                            "max_pages": {
+                                "type": "integer",
+                                "default": 10,
+                                "description": "Maximum pages to crawl",
+                            },
+                            "max_depth": {
+                                "type": "integer",
+                                "default": 2,
+                                "description": "Maximum crawl depth",
+                            },
+                            "same_domain_only": {
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Stay within same domain",
+                            },
+                            "include_patterns": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "URL patterns to include",
+                            },
+                            "exclude_patterns": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "URL patterns to exclude",
+                            },
                         },
-                        "required": ["start_url"]
-                    }
+                        "required": ["start_url"],
+                    },
                 ),
                 Tool(
                     name="mcp__freecrawl__deep_research",
@@ -1087,15 +1256,34 @@ class FreeCrawlServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "topic": {"type": "string", "description": "Research topic"},
-                            "num_sources": {"type": "integer", "default": 5, "description": "Number of sources to research"},
-                            "search_queries": {"type": "array", "items": {"type": "string"}, "description": "Custom search queries"},
-                            "include_academic": {"type": "boolean", "default": False, "description": "Include academic sources"},
-                            "max_depth": {"type": "integer", "default": 1, "description": "Research depth"}
+                            "topic": {
+                                "type": "string",
+                                "description": "Research topic",
+                            },
+                            "num_sources": {
+                                "type": "integer",
+                                "default": 5,
+                                "description": "Number of sources to research",
+                            },
+                            "search_queries": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Custom search queries",
+                            },
+                            "include_academic": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Include academic sources",
+                            },
+                            "max_depth": {
+                                "type": "integer",
+                                "default": 1,
+                                "description": "Research depth",
+                            },
                         },
-                        "required": ["topic"]
-                    }
-                )
+                        "required": ["topic"],
+                    },
+                ),
             ]
 
         @server.call_tool()
@@ -1112,8 +1300,12 @@ class FreeCrawlServer:
                     result = await self.freecrawl_deep_research(**arguments)
                 else:
                     return [TextContent(type="text", text=f"Unknown tool: {name}")]
-                
-                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+
+                return [
+                    TextContent(
+                        type="text", text=json.dumps(result, indent=2, default=str)
+                    )
+                ]
             except Exception as e:
                 logger.error(f"Tool call error: {e}")
                 return [TextContent(type="text", text=f"Error: {str(e)}")]
@@ -1148,9 +1340,7 @@ class FreeCrawlServer:
             # Run the MCP server
             async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
                 await self.mcp.run(
-                    read_stream,
-                    write_stream,
-                    self.mcp.create_initialization_options()
+                    read_stream, write_stream, self.mcp.create_initialization_options()
                 )
         finally:
             await self.cleanup()
@@ -1160,14 +1350,16 @@ class FreeCrawlServer:
     async def freecrawl_scrape(
         self,
         url: str,
-        formats: List[Literal["markdown", "html", "text", "screenshot", "structured"]] = ["markdown"],
+        formats: List[
+            Literal["markdown", "html", "text", "screenshot", "structured"]
+        ] = ["markdown"],
         javascript: bool = True,
         wait_for: Optional[str] = None,
         anti_bot: bool = True,
         headers: Optional[Dict[str, str]] = None,
         cookies: Optional[Dict[str, str]] = None,
         cache: bool = True,
-        timeout: int = 30000
+        timeout: int = 30000,
     ) -> Dict[str, Any]:
         """
         Scrape content from a single URL with advanced options.
@@ -1182,7 +1374,9 @@ class FreeCrawlServer:
 
             # Check rate limits
             if not await self.state.rate_limiter.check_rate_limit(url):
-                raise FreeCrawlError(ErrorCode.RATE_LIMITED, "Rate limit exceeded for domain")
+                raise FreeCrawlError(
+                    ErrorCode.RATE_LIMITED, "Rate limit exceeded for domain"
+                )
 
             # Check cache first
             if cache and self.state.cache:
@@ -1202,7 +1396,7 @@ class FreeCrawlServer:
                     wait_for=wait_for,
                     headers=headers,
                     cookies=cookies,
-                    timeout=timeout
+                    timeout=timeout,
                 )
 
                 # Cache result
@@ -1217,7 +1411,11 @@ class FreeCrawlServer:
         except Exception as e:
             if isinstance(e, FreeCrawlError):
                 logger.error(f"FreeCrawl error: {e.message}")
-                return {"error": e.code.value, "message": e.message, "details": e.details}
+                return {
+                    "error": e.code.value,
+                    "message": e.message,
+                    "details": e.details,
+                }
             else:
                 logger.error(f"Unexpected error: {str(e)}")
                 return {"error": "processing_error", "message": str(e)}
@@ -1228,7 +1426,7 @@ class FreeCrawlServer:
         concurrency: int = 5,
         formats: List[str] = ["markdown"],
         common_options: Optional[Dict[str, Any]] = None,
-        continue_on_error: bool = True
+        continue_on_error: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Scrape multiple URLs concurrently with shared or individual options.
@@ -1238,7 +1436,9 @@ class FreeCrawlServer:
         """
         try:
             if len(urls) > 100:
-                raise FreeCrawlError(ErrorCode.INVALID_URL, "Maximum 100 URLs allowed in batch")
+                raise FreeCrawlError(
+                    ErrorCode.INVALID_URL, "Maximum 100 URLs allowed in batch"
+                )
 
             # Limit concurrency
             concurrency = min(concurrency, self.config.max_concurrent, len(urls))
@@ -1252,7 +1452,11 @@ class FreeCrawlServer:
                         return await self.freecrawl_scrape(**options)
                     except Exception as e:
                         if continue_on_error:
-                            return {"error": "processing_error", "message": str(e), "url": url}
+                            return {
+                                "error": "processing_error",
+                                "message": str(e),
+                                "url": url,
+                            }
                         raise
 
             # Execute all scraping tasks
@@ -1263,11 +1467,13 @@ class FreeCrawlServer:
             final_results = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    final_results.append({
-                        "error": "processing_error",
-                        "message": str(result),
-                        "url": urls[i]
-                    })
+                    final_results.append(
+                        {
+                            "error": "processing_error",
+                            "message": str(result),
+                            "url": urls[i],
+                        }
+                    )
                 else:
                     final_results.append(result)
 
@@ -1285,7 +1491,7 @@ class FreeCrawlServer:
         schema: Dict[str, Any],
         prompt: Optional[str] = None,
         validation: bool = True,
-        multiple: bool = False
+        multiple: bool = False,
     ) -> Dict[str, Any]:
         """
         Extract structured data from web pages using schema-driven approach.
@@ -1304,8 +1510,10 @@ class FreeCrawlServer:
             # In a full implementation, this would use LLM for intelligent extraction
             extracted_data = {
                 "title": scraped.get("title", ""),
-                "content": scraped.get("text", "")[:500] + "..." if scraped.get("text") else "",
-                "url": url
+                "content": scraped.get("text", "")[:500] + "..."
+                if scraped.get("text")
+                else "",
+                "url": url,
             }
 
             result = ExtractedData(
@@ -1314,7 +1522,7 @@ class FreeCrawlServer:
                 extracted_at=datetime.now(),
                 data=extracted_data,
                 confidence_scores={"overall": 0.8},
-                validation_errors=[]
+                validation_errors=[],
             )
 
             return result.model_dump()
@@ -1333,7 +1541,7 @@ class FreeCrawlServer:
         formats: List[Literal["markdown", "structured", "text"]] = ["structured"],
         languages: Optional[List[str]] = None,
         extract_images: bool = False,
-        extract_tables: bool = True
+        extract_tables: bool = True,
     ) -> Dict[str, Any]:
         """
         Process documents (PDF, DOCX, PPTX, etc.) using Unstructured.
@@ -1343,7 +1551,9 @@ class FreeCrawlServer:
         """
         try:
             if not file_path and not url:
-                raise FreeCrawlError(ErrorCode.INVALID_URL, "Either file_path or url must be provided")
+                raise FreeCrawlError(
+                    ErrorCode.INVALID_URL, "Either file_path or url must be provided"
+                )
 
             result = await self.state.document_processor.process_document(
                 file_path=file_path,
@@ -1352,7 +1562,7 @@ class FreeCrawlServer:
                 formats=formats,
                 languages=languages,
                 extract_images=extract_images,
-                extract_tables=extract_tables
+                extract_tables=extract_tables,
             )
 
             return result
@@ -1374,7 +1584,7 @@ class FreeCrawlServer:
                 "status": "healthy",
                 "timestamp": datetime.now().isoformat(),
                 "version": "1.0.0",
-                "checks": {}
+                "checks": {},
             }
 
             # Check browser pool
@@ -1383,12 +1593,12 @@ class FreeCrawlServer:
                 health_status["checks"]["browser_pool"] = {
                     "status": "healthy",
                     "browser_count": browser_count,
-                    "max_browsers": self.config.max_browsers
+                    "max_browsers": self.config.max_browsers,
                 }
             except Exception as e:
                 health_status["checks"]["browser_pool"] = {
                     "status": "unhealthy",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 health_status["status"] = "degraded"
 
@@ -1409,12 +1619,12 @@ class FreeCrawlServer:
                     "status": memory_status,
                     "memory_mb": round(memory_mb, 2),
                     "cpu_percent": cpu_percent,
-                    "max_memory_mb": 2000
+                    "max_memory_mb": 2000,
                 }
             except Exception as e:
                 health_status["checks"]["resources"] = {
                     "status": "unknown",
-                    "error": str(e)
+                    "error": str(e),
                 }
 
             # Check cache
@@ -1424,17 +1634,17 @@ class FreeCrawlServer:
                     health_status["checks"]["cache"] = {
                         "status": "healthy",
                         "size_mb": round(cache_size_mb, 2),
-                        "max_size_mb": round(self.config.cache_max_size / 1024 / 1024, 2)
+                        "max_size_mb": round(
+                            self.config.cache_max_size / 1024 / 1024, 2
+                        ),
                     }
                 except Exception as e:
                     health_status["checks"]["cache"] = {
                         "status": "unhealthy",
-                        "error": str(e)
+                        "error": str(e),
                     }
             else:
-                health_status["checks"]["cache"] = {
-                    "status": "disabled"
-                }
+                health_status["checks"]["cache"] = {"status": "disabled"}
 
             return health_status
 
@@ -1442,7 +1652,7 @@ class FreeCrawlServer:
             return {
                 "status": "unhealthy",
                 "timestamp": datetime.now().isoformat(),
-                "error": str(e)
+                "error": str(e),
             }
 
     async def freecrawl_search(
@@ -1450,7 +1660,7 @@ class FreeCrawlServer:
         query: str,
         num_results: int = 10,
         scrape_results: bool = True,
-        search_engine: str = "duckduckgo"
+        search_engine: str = "duckduckgo",
     ) -> Dict[str, Any]:
         """
         Perform web search and optionally scrape results.
@@ -1467,41 +1677,38 @@ class FreeCrawlServer:
             search_page = await self.freecrawl_scrape(
                 url=search_url,
                 formats=["html"],
-                javascript=False  # DuckDuckGo works without JS
+                javascript=False,  # DuckDuckGo works without JS
             )
 
             if "error" in search_page:
                 return search_page
 
             # Parse search results
-            soup = BeautifulSoup(search_page["html"], 'html.parser')
+            soup = BeautifulSoup(search_page["html"], "html.parser")
             results = []
 
             # Extract search result links
-            for i, result_div in enumerate(soup.find_all('div', class_='result'), 1):
+            for i, result_div in enumerate(soup.find_all("div", class_="result"), 1):
                 if i > num_results:
                     break
 
-                title_link = result_div.find('a', class_='result__a')
+                title_link = result_div.find("a", class_="result__a")
                 if title_link:
                     title = title_link.get_text(strip=True)
-                    url = title_link.get('href', '')
+                    url = title_link.get("href", "")
 
-                    snippet_div = result_div.find('div', class_='result__snippet')
+                    snippet_div = result_div.find("div", class_="result__snippet")
                     snippet = snippet_div.get_text(strip=True) if snippet_div else ""
 
-                    results.append({
-                        "title": title,
-                        "url": url,
-                        "snippet": snippet,
-                        "rank": i
-                    })
+                    results.append(
+                        {"title": title, "url": url, "snippet": snippet, "rank": i}
+                    )
 
             search_result = {
                 "query": query,
                 "total_results": len(results),
                 "search_engine": search_engine,
-                "results": results
+                "results": results,
             }
 
             # Optionally scrape each result
@@ -1511,7 +1718,7 @@ class FreeCrawlServer:
                     urls=urls_to_scrape,
                     formats=["markdown", "text"],
                     concurrency=3,
-                    continue_on_error=True
+                    continue_on_error=True,
                 )
                 search_result["scraped_content"] = scraped_content
 
@@ -1530,7 +1737,7 @@ class FreeCrawlServer:
         max_depth: int = 2,
         same_domain_only: bool = True,
         include_patterns: Optional[List[str]] = None,
-        exclude_patterns: Optional[List[str]] = None
+        exclude_patterns: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Crawl a website starting from a URL.
@@ -1562,9 +1769,7 @@ class FreeCrawlServer:
                 try:
                     # Scrape current page
                     result = await self.freecrawl_scrape(
-                        url=current_url,
-                        formats=["markdown", "text"],
-                        javascript=True
+                        url=current_url, formats=["markdown", "text"], javascript=True
                     )
 
                     if "error" not in result:
@@ -1574,8 +1779,12 @@ class FreeCrawlServer:
                         if depth < max_depth and "links" in result:
                             for link in result["links"][:20]:  # Limit links per page
                                 if self._should_crawl_url(
-                                    link, start_domain, same_domain_only,
-                                    include_patterns, exclude_patterns, visited_urls
+                                    link,
+                                    start_domain,
+                                    same_domain_only,
+                                    include_patterns,
+                                    exclude_patterns,
+                                    visited_urls,
                                 ):
                                     urls_to_visit.append((link, depth + 1))
 
@@ -1584,18 +1793,22 @@ class FreeCrawlServer:
                             sitemap[depth] = []
                         sitemap[depth].append(current_url)
                     else:
-                        errors.append({
-                            "url": current_url,
-                            "error": result.get("error", "unknown"),
-                            "message": result.get("message", "Failed to scrape")
-                        })
+                        errors.append(
+                            {
+                                "url": current_url,
+                                "error": result.get("error", "unknown"),
+                                "message": result.get("message", "Failed to scrape"),
+                            }
+                        )
 
                 except Exception as e:
-                    errors.append({
-                        "url": current_url,
-                        "error": "processing_error",
-                        "message": str(e)
-                    })
+                    errors.append(
+                        {
+                            "url": current_url,
+                            "error": "processing_error",
+                            "message": str(e),
+                        }
+                    )
 
             return {
                 "start_url": start_url,
@@ -1604,7 +1817,7 @@ class FreeCrawlServer:
                 "max_depth_reached": max(sitemap.keys()) if sitemap else 0,
                 "content": scraped_content,
                 "sitemap": {str(k): v for k, v in sitemap.items()},
-                "errors": errors if errors else None
+                "errors": errors if errors else None,
             }
 
         except Exception as e:
@@ -1618,7 +1831,7 @@ class FreeCrawlServer:
         start_url: str,
         max_urls: int = 50,
         include_external: bool = False,
-        formats: List[str] = ["sitemap"]
+        formats: List[str] = ["sitemap"],
     ) -> Dict[str, Any]:
         """
         Discover and map URLs from a website.
@@ -1632,16 +1845,14 @@ class FreeCrawlServer:
 
             # Scrape the start page to get initial links
             result = await self.freecrawl_scrape(
-                url=start_url,
-                formats=["html"],
-                javascript=True
+                url=start_url, formats=["html"], javascript=True
             )
 
             if "error" in result:
                 return result
 
             # Parse all links
-            soup = BeautifulSoup(result["html"], 'html.parser')
+            soup = BeautifulSoup(result["html"], "html.parser")
             discovered_urls = set()
             internal_urls = set()
             external_urls = set()
@@ -1649,8 +1860,8 @@ class FreeCrawlServer:
             start_domain = urlparse(start_url).netloc
 
             # Extract all links
-            for link in soup.find_all('a', href=True):
-                href = link['href']
+            for link in soup.find_all("a", href=True):
+                href = link["href"]
                 absolute_url = urljoin(start_url, href)
 
                 if absolute_url not in discovered_urls:
@@ -1670,7 +1881,7 @@ class FreeCrawlServer:
                 "root": start_url,
                 "internal_urls": list(internal_urls)[:max_urls],
                 "external_urls": list(external_urls)[:50] if include_external else [],
-                "total_discovered": len(discovered_urls)
+                "total_discovered": len(discovered_urls),
             }
 
             # Analyze URL structure
@@ -1683,7 +1894,7 @@ class FreeCrawlServer:
                 "external_count": len(external_urls),
                 "sitemap": sitemap,
                 "url_analysis": url_analysis,
-                "formats": formats
+                "formats": formats,
             }
 
         except Exception as e:
@@ -1698,7 +1909,7 @@ class FreeCrawlServer:
         num_sources: int = 5,
         search_queries: Optional[List[str]] = None,
         include_academic: bool = False,
-        max_depth: int = 1
+        max_depth: int = 1,
     ) -> Dict[str, Any]:
         """
         Perform comprehensive research on a topic using multiple sources.
@@ -1708,7 +1919,9 @@ class FreeCrawlServer:
         """
         try:
             if num_sources > 20:
-                raise FreeCrawlError(ErrorCode.INVALID_URL, "Maximum 20 sources allowed")
+                raise FreeCrawlError(
+                    ErrorCode.INVALID_URL, "Maximum 20 sources allowed"
+                )
 
             # Generate search queries if not provided
             if not search_queries:
@@ -1716,7 +1929,7 @@ class FreeCrawlServer:
                     topic,
                     f"{topic} overview",
                     f"{topic} guide",
-                    f"what is {topic}"
+                    f"what is {topic}",
                 ]
 
             research_results = {
@@ -1724,7 +1937,7 @@ class FreeCrawlServer:
                 "search_queries": search_queries,
                 "sources": [],
                 "summary": {},
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             all_sources = []
@@ -1732,9 +1945,7 @@ class FreeCrawlServer:
             # Perform searches for each query
             for query in search_queries[:3]:  # Limit to 3 queries
                 search_result = await self.freecrawl_search(
-                    query=query,
-                    num_results=num_sources,
-                    scrape_results=False
+                    query=query, num_results=num_sources, scrape_results=False
                 )
 
                 if "error" not in search_result and "results" in search_result:
@@ -1756,32 +1967,49 @@ class FreeCrawlServer:
                     urls=urls_to_scrape,
                     formats=["markdown", "text"],
                     concurrency=3,
-                    continue_on_error=True
+                    continue_on_error=True,
                 )
 
                 # Combine search results with scraped content
-                for i, (source, content) in enumerate(zip(unique_sources, scraped_content)):
+                for i, (source, content) in enumerate(
+                    zip(unique_sources, scraped_content)
+                ):
                     if "error" not in content:
                         research_source = {
                             "rank": i + 1,
                             "title": source.get("title", ""),
                             "url": source["url"],
                             "snippet": source.get("snippet", ""),
-                            "content_preview": content.get("text", "")[:500] + "..." if content.get("text") else "",
-                            "word_count": len(content.get("text", "").split()) if content.get("text") else 0,
-                            "scraped_at": content.get("metadata", {}).get("timestamp")
+                            "content_preview": content.get("text", "")[:500] + "..."
+                            if content.get("text")
+                            else "",
+                            "word_count": len(content.get("text", "").split())
+                            if content.get("text")
+                            else 0,
+                            "scraped_at": content.get("metadata", {}).get("timestamp"),
                         }
                         research_results["sources"].append(research_source)
 
             # Generate research summary
-            total_words = sum(source.get("word_count", 0) for source in research_results["sources"])
+            total_words = sum(
+                source.get("word_count", 0) for source in research_results["sources"]
+            )
             research_results["summary"] = {
                 "total_sources": len(research_results["sources"]),
-                "successful_scrapes": len([s for s in research_results["sources"] if s.get("word_count", 0) > 0]),
+                "successful_scrapes": len(
+                    [
+                        s
+                        for s in research_results["sources"]
+                        if s.get("word_count", 0) > 0
+                    ]
+                ),
                 "total_words_gathered": total_words,
-                "average_words_per_source": total_words // len(research_results["sources"]) if research_results["sources"] else 0,
+                "average_words_per_source": total_words
+                // len(research_results["sources"])
+                if research_results["sources"]
+                else 0,
                 "research_depth": max_depth,
-                "academic_sources_included": include_academic
+                "academic_sources_included": include_academic,
             }
 
             return research_results
@@ -1792,7 +2020,6 @@ class FreeCrawlServer:
             else:
                 return {"error": "processing_error", "message": str(e)}
 
-
     def _should_crawl_url(
         self,
         url: str,
@@ -1800,7 +2027,7 @@ class FreeCrawlServer:
         same_domain_only: bool,
         include_patterns: Optional[List[str]],
         exclude_patterns: Optional[List[str]],
-        visited_urls: set
+        visited_urls: set,
     ) -> bool:
         """Check if URL should be crawled based on filters"""
         if url in visited_urls:
@@ -1835,7 +2062,7 @@ class FreeCrawlServer:
 
         for url in urls:
             parsed = urlparse(url)
-            path_parts = [p for p in parsed.path.split('/') if p]
+            path_parts = [p for p in parsed.path.split("/") if p]
 
             # Count path depth
             depth = len(path_parts)
@@ -1846,8 +2073,8 @@ class FreeCrawlServer:
             # Count file extensions
             if path_parts:
                 last_part = path_parts[-1]
-                if '.' in last_part:
-                    ext = last_part.split('.')[-1].lower()
+                if "." in last_part:
+                    ext = last_part.split(".")[-1].lower()
                     if ext not in extensions:
                         extensions[ext] = 0
                     extensions[ext] += 1
@@ -1856,7 +2083,12 @@ class FreeCrawlServer:
             "total_urls": len(urls),
             "path_depth_distribution": path_segments,
             "file_extensions": extensions,
-            "average_depth": sum(depth * count for depth, count in path_segments.items()) / len(urls) if urls else 0
+            "average_depth": sum(
+                depth * count for depth, count in path_segments.items()
+            )
+            / len(urls)
+            if urls
+            else 0,
         }
 
     # === Helper Methods ===
@@ -1871,7 +2103,7 @@ class FreeCrawlServer:
                 return False
 
             # Must be HTTP/HTTPS
-            if parsed.scheme not in ['http', 'https']:
+            if parsed.scheme not in ["http", "https"]:
                 return False
 
             # Check for blocked domains
@@ -1906,129 +2138,26 @@ class FreeCrawlServer:
         """Install Playwright browsers"""
         try:
             process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "playwright", "install", "chromium",
+                sys.executable,
+                "-m",
+                "playwright",
+                "install",
+                "chromium",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
 
             if process.returncode != 0:
                 logger.error(f"Failed to install browsers: {stderr.decode()}")
-                raise FreeCrawlError(ErrorCode.PROCESSING_ERROR, "Failed to install browsers")
+                raise FreeCrawlError(
+                    ErrorCode.PROCESSING_ERROR, "Failed to install browsers"
+                )
 
             logger.info("Playwright browsers installed successfully")
 
         except Exception as e:
             logger.error(f"Browser installation error: {e}")
-            raise FreeCrawlError(ErrorCode.PROCESSING_ERROR, f"Browser installation failed: {str(e)}")
-
-# === Entry Point ===
-
-async def main():
-    """Main entry point"""
-    try:
-        # Parse basic arguments
-        if "--help" in sys.argv or "-h" in sys.argv:
-            print("""
-FreeCrawl MCP Server
-
-Usage:
-  freecrawl.py [options]
-
-Options:
-  --install-browsers    Install Playwright browsers and exit
-  --test               Run basic functionality test
-  --help               Show this help message
-
-Environment Variables:
-  FREECRAWL_TRANSPORT       Transport type (stdio|http) [default: stdio]
-  FREECRAWL_MAX_BROWSERS    Maximum browser instances [default: 3]
-  FREECRAWL_CACHE_DIR       Cache directory [default: /tmp/freecrawl_cache]
-  FREECRAWL_LOG_LEVEL       Log level [default: INFO]
-
-Examples:
-  # Run MCP server (default)
-  uv run /path/to/freecrawl.py
-
-  # Install browsers
-  uv run /path/to/freecrawl.py --install-browsers
-
-  # Test installation
-  uv run /path/to/freecrawl.py --test
-
-For more configuration options, see the documentation.
-            """)
-            return 0
-
-        # Handle install browsers
-        if "--install-browsers" in sys.argv:
-            logger.info("Installing Playwright browsers...")
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "playwright", "install", "chromium",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            raise FreeCrawlError(
+                ErrorCode.PROCESSING_ERROR, f"Browser installation failed: {str(e)}"
             )
-            stdout, stderr = await process.communicate()
-
-            if process.returncode == 0:
-                logger.info("Browsers installed successfully")
-                return 0
-            else:
-                logger.error(f"Failed to install browsers: {stderr.decode()}")
-                return 1
-
-        # Handle test
-        if "--test" in sys.argv:
-            logger.info("Running FreeCrawl test...")
-            config = ServerConfig()
-            server = FreeCrawlServer(config)
-
-            try:
-                await server.initialize()
-
-                # Test basic scraping
-                result = await server.freecrawl_scrape("https://httpbin.org/html")
-                if "error" not in result:
-                    logger.info("✓ Basic scraping test passed")
-                else:
-                    logger.error(f"✗ Basic scraping test failed: {result.get('message')}")
-                    return 1
-
-                # Test health check
-                health = await server.freecrawl_health_check()
-                if health.get("status") in ["healthy", "degraded"]:
-                    logger.info("✓ Health check test passed")
-                else:
-                    logger.error("✗ Health check test failed")
-                    return 1
-
-                logger.info("✓ All tests passed - FreeCrawl is working correctly")
-                return 0
-
-            finally:
-                await server.cleanup()
-
-        # Run normal server
-        config = ServerConfig()
-        server = FreeCrawlServer(config)
-
-        await server.run()
-        return 0
-
-    except KeyboardInterrupt:
-        logger.info("Server interrupted by user")
-        return 0
-    except Exception as e:
-        logger.error(f"Server error: {e}", exc_info=True)
-        return 1
-
-def sync_main():
-    """Synchronous entry point for direct execution"""
-    try:
-        return asyncio.run(main())
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
-        return 1
-
-if __name__ == "__main__":
-    sys.exit(sync_main())
