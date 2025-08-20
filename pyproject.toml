@@ -4,15 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "freecrawl-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "FreeCrawl MCP Server - Self-hosted web scraping and document processing as a Firecrawl replacement"
 readme = "README.md"
 requires-python = ">=3.12"
-authors = [
-    {name = "Dylan Gluck", email = "dylan@dylangluck.com"}
+authors = [{ name = "Dylan Gluck", email = "dylan@dylangluck.com" }]
+license = { text = "MIT" }
+keywords = [
+    "mcp",
+    "web-scraping",
+    "firecrawl",
+    "playwright",
+    "document-processing",
 ]
-license = {text = "MIT"}
-keywords = ["mcp", "web-scraping", "firecrawl", "playwright", "document-processing"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

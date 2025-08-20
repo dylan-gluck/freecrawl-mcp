@@ -23,42 +23,29 @@ import logging
 import os
 import pickle
 import random
-import re
 import socket
-import sqlite3
-import subprocess
 import sys
 import tempfile
 import time
-import traceback
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import urlparse, urljoin, quote
-import uuid
-import gc
 
 import aiohttp
 import aiosqlite
 import psutil
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from pydantic import BaseModel, Field, HttpUrl, validator
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
+from playwright.async_api import async_playwright, Browser, BrowserContext
+from pydantic import BaseModel, Field
 
 # MCP imports
 try:
     from mcp.server import Server
-    from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
+    from mcp.types import Tool, TextContent
     import mcp.server.stdio
     import mcp.server.session
 
@@ -68,12 +55,7 @@ except ImportError:
     Server = None
 
 # Optional imports
-try:
-    import magic
-
-    HAS_MAGIC = True
-except ImportError:
-    HAS_MAGIC = False
+# (removed unused magic import)
 
 # Configure logging
 logging.basicConfig(
