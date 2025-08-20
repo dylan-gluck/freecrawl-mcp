@@ -19,7 +19,7 @@ async def main():
 FreeCrawl MCP Server
 
 Usage:
-  freecrawl [options]
+  freecrawl-mcp [options]
 
 Options:
   --install-browsers    Install Playwright browsers and exit
@@ -34,13 +34,13 @@ Environment Variables:
 
 Examples:
   # Run MCP server (default)
-  uvx freecrawl
+  uvx freecrawl-mcp
 
   # Install browsers
-  uvx freecrawl --install-browsers
+  uvx freecrawl-mcp --install-browsers
 
   # Test installation
-  uvx freecrawl --test
+  uvx freecrawl-mcp --test
 
 For more configuration options, see the documentation.
             """)

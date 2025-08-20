@@ -13,6 +13,19 @@ A production-ready Model Context Protocol (MCP) server for web scraping and docu
 - **Easy installation** via `uvx` or local development setup
 - **Health monitoring** and metrics collection
 
+## MCP Config (using `uvx`)
+
+```json
+{
+  "mcpServers": {
+    "freecrawl": {
+      "command": "uvx",
+      "args": ["freecrawl-mcp"],
+    }
+  }
+}
+```
+
 ## 📦 Installation & Usage
 
 ### Quick Start with uvx (Recommended)
@@ -20,17 +33,11 @@ A production-ready Model Context Protocol (MCP) server for web scraping and docu
 The easiest way to use FreeCrawl is with `uvx`, which automatically manages dependencies:
 
 ```bash
-# Install and run directly
-uvx freecrawl-mcp
-
 # Install browsers on first run
 uvx freecrawl-mcp --install-browsers
 
 # Test functionality
 uvx freecrawl-mcp --test
-
-# Get help
-uvx freecrawl-mcp --help
 ```
 
 ### Local Development Setup
