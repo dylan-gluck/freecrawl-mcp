@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "freecrawl": {
+      "command": "uv",
+      "args": ["run", "/path/to/freecrawl.py"],
+      "env": {
+        "FREECRAWL_LOG_LEVEL": "INFO",
+        "FREECRAWL_MAX_BROWSERS": "3",
+        "FREECRAWL_CACHE": "true",
+        "FREECRAWL_ANTI_DETECT": "true"
+      }
+    }
+  }
+}
