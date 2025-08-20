@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "freecrawl-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "FreeCrawl MCP Server - Self-hosted web scraping and document processing as a Firecrawl replacement"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -40,7 +40,7 @@ Repository = "https://github.com/dylan-gluck/freecrawl-mcp"
 Issues = "https://github.com/dylan-gluck/freecrawl-mcp/issues"
 
 [project.scripts]
-freecrawl = "freecrawl.__main__:sync_main"
+freecrawl-mcp = "freecrawl.__main__:sync_main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/freecrawl"]

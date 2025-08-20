@@ -49,15 +49,15 @@ For local development or customization:
    uv sync
 
    # Install browser dependencies
-   uv run freecrawl --install-browsers
+   uv run freecrawl-mcp --install-browsers
 
    # Run tests
-   uv run freecrawl --test
+   uv run freecrawl-mcp --test
    ```
 
 3. **Run the server:**
    ```bash
-   uv run freecrawl
+   uv run freecrawl-mcp
    ```
 
 ## 🛠 Configuration
@@ -246,7 +246,7 @@ Add FreeCrawl to your MCP configuration:
   "mcpServers": {
     "freecrawl": {
       "command": "uv",
-      "args": ["run", "freecrawl"],
+      "args": ["run", "freecrawl-mcp"],
       "cwd": "/path/to/freecrawl-mcp"
     }
   }
@@ -322,7 +322,7 @@ uvx freecrawl-mcp --test
 **Local development:**
 ```bash
 export FREECRAWL_LOG_LEVEL=DEBUG
-uv run freecrawl --test
+uv run freecrawl-mcp --test
 ```
 
 ## 📈 Monitoring & Observability
@@ -354,7 +354,7 @@ uvx freecrawl-mcp --test
 **Local development:**
 ```bash
 # Basic functionality test
-uv run freecrawl --test
+uv run freecrawl-mcp --test
 ```
 
 ### Code Structure
@@ -373,7 +373,7 @@ This project is licensed under the MIT License - see the technical specification
 1. Fork the repository at https://github.com/dylan-gluck/freecrawl-mcp
 2. Create a feature branch
 3. Set up local development: `uv sync`
-4. Run tests: `uv run freecrawl --test`
+4. Run tests: `uv run freecrawl-mcp --test`
 5. Submit a pull request
 
 ## 📚 Technical Specification
